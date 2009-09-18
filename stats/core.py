@@ -38,6 +38,7 @@ from deluge.plugins.corepluginbase import CorePluginBase
 from deluge import component
 from deluge import configmanager
 import gobject
+
 #from deluge.plugins.coreclient import client #1.1 and later only
 #client: see http://dev.deluge-torrent.org/wiki/Development/UiClient#Remoteapi
 
@@ -55,10 +56,17 @@ DEFAULT_TOTALS = {
     "stats":{}
 }
 
+def get_key(config, key):
+    try:
+        return config[key]
+    except KeyError:
+        return None
+
 class Core(CorePluginBase):
     totals = {} #class var to catch only updating this once per session in enable.
 
     def enable(self):
+        log.debug("Stats plugin enabled")
         self.core = component.get("Core")
         self.stats ={}
 
@@ -67,7 +75,7 @@ class Core(CorePluginBase):
         if self.totals == {}:
             self.totals.update(self.saved_stats.config)
 
-        self.stats = self.saved_stats.get("stats") or {}
+        self.stats = get_key(self.saved_stats, "stats") or {}
         self.add_stats(
             'upload_rate',
             'download_rate',
@@ -78,9 +86,9 @@ class Core(CorePluginBase):
         )
 
         self.update_timer = gobject.timeout_add(
-            self.config.get("update_interval"), self.update_stats)
+            self.config["update_interval"], self.update_stats)
         self.save_timer = gobject.timeout_add(60 * 1000, self.save_stats)
-        self.length = self.config.get("length")
+        self.length = self.config["length"]
 
     def disable(self):
         self.save_stats()
@@ -100,6 +108,7 @@ class Core(CorePluginBase):
                 if not stat.startswith('_') and stat not in stats:
                     stats[stat] = getattr(status, stat, None)
 
+
             for stat, stat_list in self.stats.iteritems():
                 if stat in stats:
                     stat_list.insert(0, int(stats[stat]))
@@ -107,16 +116,17 @@ class Core(CorePluginBase):
                 if len(stat_list) > self.length:
                     stat_list.pop()
         except Exception,e:
-            log.error(e.message)
+            log.error("Stats update error %s" % e)
         return True
 
     def save_stats(self):
         try:
-            self.saved_stats.set("stats", self.stats)
-            self.saved_stats.config.update(self.export_get_totals())
+            self.saved_stats["stats"] = self.stats
+            for key, value in self.export_get_totals().iteritems():
+                self.saved_stats.config[key] = value              
             self.saved_stats.save()
-        except Exception,e:
-            log.error(e.message)
+        except Exception, e:
+            log.error("Stats save error %s" % e)
         return True
 
 

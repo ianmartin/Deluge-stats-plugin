@@ -34,6 +34,11 @@
 #    but you are not obligated to do so. If you do not wish to do so, delete
 #    this exception statement from your version. If you delete this exception
 
+# It should be noted that torrentdetails.add_tab() cannot be used
+# On exit the position of all displayed tabs is saved in tabs.state
+# then on restart TorrentDetails tries to lookup default_tabs["Graphs"]
+# and deluge exits with a key exception
+
 import gtk
 import gobject
 from gtk.glade import XML
@@ -48,24 +53,47 @@ from deluge.ui.gtkui.torrentdetails import Tab
 class GraphsTab(Tab):
     def __init__(self, glade):
         Tab.__init__(self)
-        self._name = 'Graphs'
         self.glade = glade
         self.window = self.glade.get_widget('graph_tab')
         self.notebook = self.glade.get_widget('graph_notebook')
         self.label = self.glade.get_widget('graph_label')
+
+        self._name = 'Graphs'
+        self._child_widget = self.window
+        self._tab_label = self.label
         self.bandwidth_graph = self.glade.get_widget('bandwidth_graph')
         self.bandwidth_graph.connect('expose_event', self.bandwidth_expose)
+        self.bandwidth_graph.connect('visibility_notify_event', self.visibility)
+        self.bandwidth_graph.connect('show', self.show)
+        self.bandwidth_graph.connect('hide', self.hide)
+
         self.window.unparent()
         self.label.unparent()
 
+        self.update_timer = None
+
     def bandwidth_expose(self, widget, event):
+        log.debug("expose event")
         self.graph_widget = self.bandwidth_graph
         self.graph = graph.Graph()
         self.graph.add_stat('download_rate', label='Download Rate', color=graph.green)
         self.graph.add_stat('upload_rate', label='Upload Rate', color=graph.blue)
         self.graph.set_left_axis(formatter=fspeed, min=10240)
-        self.update_timer = gobject.timeout_add(2000, self.update_graph)
+        if not self.update_timer:
+            self.update_timer = gobject.timeout_add(2000, self.update_graph)
         self.update_graph()
+
+    def visibility(self, widget, event):
+        log.debug("vis event")
+        log.debug(event)
+
+    def show(self, widget, event):
+        log.debug("show event")
+        log.debug(event)
+
+    def hide(self, widget, event):
+        log.debug("hide event")
+        log.debug(event)
 
     def update_graph(self):
         width, height = self.graph_widget.allocation.width, self.graph_widget.allocation.height
@@ -91,10 +119,14 @@ class GtkUI(object):
         self.torrent_details = component.get('TorrentDetails')
         self.torrent_details.notebook.append_page(self.graphs_tab.window, self.graphs_tab.label)
 
+
     def disable(self):
         self.plugin.remove_preferences_page("Stats")
         self.plugin.deregister_hook("on_apply_prefs", self.on_apply_prefs)
         self.plugin.deregister_hook("on_show_prefs", self.on_show_prefs)
+        # Remove the right hand tab, lets hope it's our one!
+        self.torrent_details.notebook.remove_page(-1)
+        del self.graphs_tab
 
     def on_apply_prefs(self):
         log.debug("applying prefs for Stats")
