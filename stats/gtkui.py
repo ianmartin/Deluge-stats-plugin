@@ -114,12 +114,10 @@ class GraphsTab(Tab):
         return True
 
     def update_intervals(self):
-        log.debug("update_intervals called")
         aclient.stats_get_intervals(self._on_intervals_changed)
 
 
     def _on_intervals_changed(self, intervals):
-        log.debug("_on_intervals_changed called: %s" % intervals)
         liststore = gtk.ListStore(int)
         for inter in intervals:
             liststore.append([inter])
