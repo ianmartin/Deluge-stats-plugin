@@ -74,7 +74,7 @@ class Graph:
         self.legend_selected = True
         self.max_selected = True
         self.black = (0, 0 , 0,)
-        self.interval = 2000 # 2 secs
+        self.interval = 2 # 2 secs
         self.text_bg =  (255, 255 , 255, 128) # prototyping
         self.set_left_axis()
 
@@ -91,15 +91,24 @@ class Graph:
             }
 
     def async_request(self):
-        aclient.stats_get_stats(self.set_stats, self.stat_info.keys())
-        aclient.stats_get_config(self.set_config)
+        aclient.stats_get_stats(self.set_stats, self.stat_info.keys(), self.interval)
+        #aclient.stats_get_config(self.set_config)
 
     def set_stats(self, stats):
+        self.last_update = stats["_last_update"]
+        del stats["_last_update"]
+        self.length = stats["_length"]
+        del stats["_length"]
+        self.update_interval = stats["_update_interval"]
+        del stats["_update_interval"]
         self.stats = stats
 
     def set_config(self, config):
         self.length = config["length"]
         self.interval = config["update_interval"]
+
+    def set_interval(self, interval):
+        self.interval = interval
 
     def draw_to_context(self, context, width, height):
         self.ctx = context
@@ -126,16 +135,16 @@ class Graph:
             self.draw_legend()
         return self.surface
 
+    #would be nice to round to nearest interval based on duration, not just nearest minute
     def draw_x_axis(self):
-        now = time.time()
-        duration = self.length * (self.interval / 1000.0)
-        start = now - duration
-        ratio = (self.width - 40) / duration
+        duration = self.length * self.interval
+        start = self.last_update - duration
+        ratio = (self.width - 40) / float(duration)
         seconds_to_minute = 60 - time.localtime(start)[5]
 
         for i in xrange(0, 5):
-            text = time.strftime('%H:%M', time.localtime(start + seconds_to_minute + (60*i)))
-            x = int(ratio * (seconds_to_minute + (60*i)))
+            text = time.strftime('%H:%M', time.localtime(start + seconds_to_minute + (60*i*self.interval)))
+            x = int(ratio * (seconds_to_minute + (60*i*self.interval)))
             self.draw_text(text, x + 46, self.height - 20)
             x = x + 59.5
             self.draw_dotted_line(gray, x, 20, x, self.height - 20)
@@ -152,7 +161,10 @@ class Graph:
                 stats[stat]['values'] = self.stats[stat]
                 stats[stat]['fill_color'] = change_opacity(stats[stat]['color'], 0.5)
                 stats[stat]['color'] = change_opacity(stats[stat]['color'], 0.8)
-                stats[stat]['max_value'] = max(self.stats[stat])
+                try:
+                    stats[stat]['max_value'] = max(self.stats[stat])
+                except ValueError:
+                    stats[stat]['max_value'] = 0
                 max_values.append(stats[stat]['max_value'])
         if len(max_values) > 1:
             max_value = max(*max_values)
@@ -176,8 +188,9 @@ class Graph:
         self.draw_dotted_line(gray, 60.5, 20, 60.5, self.height - 20)
 
         for stat, info in stats.iteritems():
-            self.draw_value_poly(info['values'], info['color'], max_value)
-            self.draw_value_poly(info['values'], info['fill_color'], max_value, info['fill'])
+            if len(info['values']) > 0:
+                self.draw_value_poly(info['values'], info['color'], max_value)
+                self.draw_value_poly(info['values'], info['fill_color'], max_value, info['fill'])
 
     def draw_legend(self):
         pass
@@ -191,7 +204,7 @@ class Graph:
         self.ctx.move_to(width, height)
 
         self.ctx.line_to(width,
-                         int(height - ((height - 28) * values[0] / max_value)))
+                         int(height - ((height - 28) * values[0] / float(max_value))))
 
         x = width
         step = (width - 60) / float(self.length)
@@ -199,12 +212,12 @@ class Graph:
             if i == self.length - 1:
                 x = 62
             self.ctx.line_to(x,
-                int(height - 1 - ((height - 28) * value / max_value))
+                int(height - 1 - ((height - 28) * value / float(max_value)))
             )
             x -= step
 
         self.ctx.line_to(
-            int(width + 62 - (((len(values) - 1) * width) / (self.length - 1))),
+            int(width  - (((len(values) - 1) * (width-62)) / float(self.length - 1))),
             height)
         self.ctx.close_path()
 

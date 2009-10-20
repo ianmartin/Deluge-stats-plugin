@@ -63,44 +63,80 @@ class GraphsTab(Tab):
         self._tab_label = self.label
         self.bandwidth_graph = self.glade.get_widget('bandwidth_graph')
         self.bandwidth_graph.connect('expose_event', self.bandwidth_expose)
-        self.bandwidth_graph.connect('visibility_notify_event', self.visibility)
-        self.bandwidth_graph.connect('show', self.show)
-        self.bandwidth_graph.connect('hide', self.hide)
 
-        self.window.unparent()
-        self.label.unparent()
-
-        self.update_timer = None
-
-    def bandwidth_expose(self, widget, event):
-        log.debug("expose event")
         self.graph_widget = self.bandwidth_graph
         self.graph = graph.Graph()
         self.graph.add_stat('download_rate', label='Download Rate', color=graph.green)
         self.graph.add_stat('upload_rate', label='Upload Rate', color=graph.blue)
         self.graph.set_left_axis(formatter=fspeed, min=10240)
-        if not self.update_timer:
-            self.update_timer = gobject.timeout_add(2000, self.update_graph)
+        self.graph.set_interval(1) #should come from config or similar
+        self.window.unparent()
+        self.label.unparent()
+
+        self.update_timer = None
+
+        self.selected_interval = 0
+        self.intervals = None
+        self.intervals_combo = self.glade.get_widget('combo_intervals')
+        cell = gtk.CellRendererText()
+        self.intervals_combo.pack_start(cell, True)
+        self.intervals_combo.add_attribute(cell, 'text', 0)
+        self.intervals_combo.connect("changed", self._on_selected_interval_changed)
+
+
+    def start(self):
+        log.debug("Graph tab starting")
         self.update_graph()
+        #this must follow update_graph else the force_call makes things co crazy
+        self.update_intervals()
+        self.update_timer = gobject.timeout_add(1000, self.update_graph)
 
-    def visibility(self, widget, event):
-        log.debug("vis event")
-        log.debug(event)
-
-    def show(self, widget, event):
-        log.debug("show event")
-        log.debug(event)
-
-    def hide(self, widget, event):
-        log.debug("hide event")
-        log.debug(event)
+    def stop(self):
+        if self.update_timer is not None:
+            gobject.source_remove(self.update_timer)
+     
+    def bandwidth_expose(self, widget, event):
+        context = self.graph_widget.window.cairo_create()
+        # set a clip region
+        context.rectangle(event.area.x, event.area.y,
+                           event.area.width, event.area.height)
+        context.clip()
+        self.graph.draw_to_context(context,
+                                   self.graph_widget.allocation.width,
+                                   self.graph_widget.allocation.height)
+        #Do not propagate the event
+        return False
 
     def update_graph(self):
-        width, height = self.graph_widget.allocation.width, self.graph_widget.allocation.height
-        context = self.graph_widget.window.cairo_create()
         self.graph.async_request()
         aclient.force_call(True)
-        self.graph.draw_to_context(context, width, height)
+        self.graph_widget.queue_draw()
+        return True
+
+    def update_intervals(self):
+        log.debug("update_intervals called")
+        aclient.stats_get_intervals(self._on_intervals_changed)
+
+
+    def _on_intervals_changed(self, intervals):
+        log.debug("_on_intervals_changed called: %s" % intervals)
+        liststore = gtk.ListStore(int)
+        for inter in intervals:
+            liststore.append([inter])
+        self.intervals_combo.set_model(liststore)
+        try:
+            current = intervals.index(self.selected_interval)
+        except:
+            current = 0
+        #should select the value saved in config
+        self.intervals_combo.set_active(current)
+
+    def _on_selected_interval_changed(self, combobox):
+        model = combobox.get_model()
+        iter = combobox.get_active_iter()
+        self.selected_interval = model.get_value(iter, 0)
+        self.graph.set_interval(self.selected_interval)
+        self.update_graph()
         return True
 
 class GtkUI(object):
@@ -118,13 +154,20 @@ class GtkUI(object):
         self.graphs_tab = GraphsTab(XML(self.get_resource("tabs.glade")))
         self.torrent_details = component.get('TorrentDetails')
         self.torrent_details.notebook.append_page(self.graphs_tab.window, self.graphs_tab.label)
+        self.notebook_signals = []
+        self.notebook_signals.append(self.torrent_details.notebook.connect("switch-page", self._on_notebook_switch_page))
+        self.notebook_signals.append(self.torrent_details.notebook.connect("hide", self._on_notebook_hide))
+        self.notebook_signals.append(self.torrent_details.notebook.connect("show", self._on_notebook_show))
 
 
     def disable(self):
+        for signal in self.notebook_signals:
+            self.torrent_details.notebook.disconnect(signal)
         self.plugin.remove_preferences_page("Stats")
         self.plugin.deregister_hook("on_apply_prefs", self.on_apply_prefs)
         self.plugin.deregister_hook("on_show_prefs", self.on_show_prefs)
         # Remove the right hand tab, lets hope it's our one!
+        self.graphs_tab.stop()
         self.torrent_details.notebook.remove_page(-1)
         del self.graphs_tab
 
@@ -145,3 +188,26 @@ class GtkUI(object):
     def get_resource(self, filename):
         import pkg_resources, os
         return pkg_resources.resource_filename("stats", os.path.join("data", filename))
+
+
+
+    def _on_notebook_switch_page(self,notebook, page, page_num):
+        if notebook.get_nth_page(page_num) is self.graphs_tab.window:
+            self.graphs_tab.start()
+        else:
+            self.graphs_tab.stop()
+        return True
+
+    def _on_notebook_hide(self, widget):
+        self.graphs_tab.stop()
+        return True
+
+    def _on_notebook_show(self, notebook):
+        #annoyingly the torrentdetails behaviour is different when removing all tabs
+        #It removes all tabs from the notebook when hiding itself, so we have to add
+        #our tab back
+        
+        #check the graphs tab is displayed, if not add it
+        if notebook.page_num(self.graphs_tab.window) is -1:
+            notebook.append_page(self.graphs_tab.window, self.graphs_tab.label)
+        return True
