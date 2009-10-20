@@ -39,21 +39,43 @@
             <property name="hscrollbar_policy">automatic</property>
             <property name="vscrollbar_policy">automatic</property>
             <child>
-              <widget class="GtkNotebook" id="graph_notebook">
+              <widget class="GtkViewport" id="viewport1">
                 <property name="visible">True</property>
-                <property name="can_focus">True</property>
-                <property name="tab_pos">left</property>
+                <property name="resize_mode">queue</property>
+                <property name="shadow_type">none</property>
                 <child>
-                  <widget class="GtkVBox" id="vbox2">
+                  <widget class="GtkNotebook" id="graph_notebook">
                     <property name="visible">True</property>
-                    <property name="orientation">vertical</property>
+                    <property name="can_focus">True</property>
+                    <property name="tab_pos">left</property>
                     <child>
-                      <widget class="GtkHBox" id="hbox1">
+                      <widget class="GtkVBox" id="vbox2">
                         <property name="visible">True</property>
+                        <property name="orientation">vertical</property>
                         <child>
-                          <widget class="GtkLabel" id="label1">
+                          <widget class="GtkHBox" id="hbox1">
                             <property name="visible">True</property>
-                            <property name="label" translatable="yes">Resolution</property>
+                            <child>
+                              <widget class="GtkLabel" id="label1">
+                                <property name="visible">True</property>
+                                <property name="label" translatable="yes">Resolution</property>
+                              </widget>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">False</property>
+                                <property name="position">0</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <widget class="GtkComboBox" id="combo_intervals">
+                                <property name="visible">True</property>
+                              </widget>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">False</property>
+                                <property name="position">1</property>
+                              </packing>
+                            </child>
                           </widget>
                           <packing>
                             <property name="expand">False</property>
@@ -62,79 +84,64 @@
                           </packing>
                         </child>
                         <child>
-                          <widget class="GtkComboBox" id="combo_intervals">
+                          <widget class="GtkDrawingArea" id="bandwidth_graph">
                             <property name="visible">True</property>
                           </widget>
                           <packing>
-                            <property name="expand">False</property>
-                            <property name="fill">False</property>
                             <property name="position">1</property>
                           </packing>
                         </child>
                       </widget>
+                    </child>
+                    <child>
+                      <widget class="GtkLabel" id="bandwidth_label">
+                        <property name="visible">True</property>
+                        <property name="label" translatable="yes">Bandwidth</property>
+                      </widget>
                       <packing>
-                        <property name="expand">False</property>
-                        <property name="fill">False</property>
-                        <property name="position">0</property>
+                        <property name="tab_fill">False</property>
+                        <property name="type">tab</property>
                       </packing>
                     </child>
                     <child>
-                      <widget class="GtkDrawingArea" id="bandwidth_graph">
+                      <widget class="GtkDrawingArea" id="connections_graph">
                         <property name="visible">True</property>
                       </widget>
                       <packing>
                         <property name="position">1</property>
                       </packing>
                     </child>
+                    <child>
+                      <widget class="GtkLabel" id="connections_label">
+                        <property name="visible">True</property>
+                        <property name="label" translatable="yes">Connections</property>
+                      </widget>
+                      <packing>
+                        <property name="position">1</property>
+                        <property name="tab_fill">False</property>
+                        <property name="type">tab</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <widget class="GtkDrawingArea" id="seeds_graph">
+                        <property name="visible">True</property>
+                      </widget>
+                      <packing>
+                        <property name="position">2</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <widget class="GtkLabel" id="seeds_label">
+                        <property name="visible">True</property>
+                        <property name="label" translatable="yes">Seeds/Peers</property>
+                      </widget>
+                      <packing>
+                        <property name="position">2</property>
+                        <property name="tab_fill">False</property>
+                        <property name="type">tab</property>
+                      </packing>
+                    </child>
                   </widget>
-                </child>
-                <child>
-                  <widget class="GtkLabel" id="bandwidth_label">
-                    <property name="visible">True</property>
-                    <property name="label" translatable="yes">Bandwidth</property>
-                  </widget>
-                  <packing>
-                    <property name="tab_fill">False</property>
-                    <property name="type">tab</property>
-                  </packing>
-                </child>
-                <child>
-                  <widget class="GtkDrawingArea" id="connections_graph">
-                    <property name="visible">True</property>
-                  </widget>
-                  <packing>
-                    <property name="position">1</property>
-                  </packing>
-                </child>
-                <child>
-                  <widget class="GtkLabel" id="connections_label">
-                    <property name="visible">True</property>
-                    <property name="label" translatable="yes">Connections</property>
-                  </widget>
-                  <packing>
-                    <property name="position">1</property>
-                    <property name="tab_fill">False</property>
-                    <property name="type">tab</property>
-                  </packing>
-                </child>
-                <child>
-                  <widget class="GtkDrawingArea" id="seeds_graph">
-                    <property name="visible">True</property>
-                  </widget>
-                  <packing>
-                    <property name="position">2</property>
-                  </packing>
-                </child>
-                <child>
-                  <widget class="GtkLabel" id="seeds_label">
-                    <property name="visible">True</property>
-                    <property name="label" translatable="yes">Seeds/Peers</property>
-                  </widget>
-                  <packing>
-                    <property name="position">2</property>
-                    <property name="tab_fill">False</property>
-                    <property name="type">tab</property>
-                  </packing>
                 </child>
               </widget>
             </child>
