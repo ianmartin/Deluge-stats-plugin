@@ -36,6 +36,7 @@
 port of old plugin by markybob.
 """
 import time
+import math
 import cairo
 from deluge.log import LOG as log
 from deluge.ui.client import aclient, sclient
@@ -141,16 +142,27 @@ class Graph:
             self.draw_legend()
         return self.surface
 
-    #would be nice to round to nearest interval based on duration, not just nearest minute
     def draw_x_axis(self):
         duration = self.length * self.interval
         start = self.last_update - duration
         ratio = (self.width - 40) / float(duration)
-        seconds_to_minute = 60 - time.localtime(start)[5]
+   
+        if duration < 1800 * 10:
+            #try rounding to nearest 1min, 5mins, 10mins, 30mins
+            for step in [60, 300, 600, 1800]:
+                if duration / step < 10:
+                    x_step = step
+                    break
+        else:
+        # if there wasnt anything useful find a nice fitting hourly divisor
+            x_step = ((duration / 5) /3600 )* 3600
 
-        for i in xrange(0, 5):
-            text = time.strftime('%H:%M', time.localtime(start + seconds_to_minute + (60*i*self.interval)))
-            x = int(ratio * (seconds_to_minute + (60*i*self.interval)))
+        #this doesnt allow for dst and timezones...
+        seconds_to_step = math.ceil(start/float(x_step)) * x_step - start
+
+        for i in xrange(0, duration/x_step + 1):
+            text = time.strftime('%H:%M', time.localtime(start + seconds_to_step  + i*x_step))
+            x = int(ratio * (seconds_to_step + i*x_step))
             self.draw_text(text, x + 46, self.height - 20)
             x = x + 59.5
             self.draw_dotted_line(gray, x, 20, x, self.height - 20)
