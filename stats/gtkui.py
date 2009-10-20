@@ -50,6 +50,21 @@ from deluge.common import fspeed
 from deluge.ui.client import aclient
 from deluge.ui.gtkui.torrentdetails import Tab
 
+def neat_time(column, cell, model, iter):
+    """Render seconds as seconds or minutes with label"""
+    seconds = model.get_value(iter, 0)
+    if seconds >60:
+        text = "%d %s" % (seconds / 60, _("minutes"))
+    elif seconds == 60:
+        text = _("1 minute")
+    elif seconds == 1:
+        text = _("1 second")
+    else:
+        text = "%d %s" % (seconds, _("seconds"))
+    cell.set_property('text', text)
+    return
+
+
 class GraphsTab(Tab):
     def __init__(self, glade):
         Tab.__init__(self)
@@ -80,7 +95,7 @@ class GraphsTab(Tab):
         self.intervals_combo = self.glade.get_widget('combo_intervals')
         cell = gtk.CellRendererText()
         self.intervals_combo.pack_start(cell, True)
-        self.intervals_combo.add_attribute(cell, 'text', 0)
+        self.intervals_combo.set_cell_data_func(cell, neat_time)
         self.intervals_combo.connect("changed", self._on_selected_interval_changed)
 
 
