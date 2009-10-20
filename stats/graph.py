@@ -38,7 +38,7 @@ port of old plugin by markybob.
 import time
 import cairo
 from deluge.log import LOG as log
-from deluge.ui.client import aclient
+from deluge.ui.client import aclient, sclient
 
 black = (0, 0, 0)
 gray = (0.75, 0.75, 0.75)
@@ -91,8 +91,14 @@ class Graph:
             }
 
     def async_request(self):
+        """Asyncronously updates the graph information"""
         aclient.stats_get_stats(self.set_stats, self.stat_info.keys(), self.interval)
-        #aclient.stats_get_config(self.set_config)
+        
+
+    def sync_request(self):
+        """Syncronously updates the graph information"""
+        stats = sclient.stats_get_stats(self.stat_info.keys(), self.interval)
+        self.set_stats(stats)
 
     def set_stats(self, stats):
         self.last_update = stats["_last_update"]

@@ -54,7 +54,6 @@ class graph_page:
 class network_png:
     @api.deco.check_session
     def GET(self, args):
-        aclient.force_call(True) #bug, invalid data in async queue?
         self.data = ''
         vars = api.web.input(width = 600, height = 150)
         api.web.header("Content-Type", "image/png")
@@ -62,8 +61,8 @@ class network_png:
         g.add_stat('download_rate', color=graph.green)
         g.add_stat('upload_rate', color=graph.blue)
         g.set_left_axis(formatter=fspeed, min=10240)
-        g.async_request()
-        aclient.force_call(True)
+        g.set_interval(1)
+        g.sync_request()
         surface = g.draw(int(vars.width), int(vars.height))
         surface.write_to_png(self)
         print self.data
@@ -75,7 +74,6 @@ class connections_png:
     @api.deco.check_session
     def GET(self, args):
         "testing, not a final graph"
-        aclient.force_call(True) #bug, invalid data in async queue?
         self.data = ''
         vars = api.web.input(width = 600, height = 150)
         api.web.header("Content-Type", "image/png")
@@ -85,8 +83,8 @@ class connections_png:
         g.add_stat('dht_torrents', color=graph.green)
         g.add_stat('num_connections', color=graph.darkred) #testing : non dht
         g.set_left_axis(formatter=str, min=10)
-        g.async_request()
-        aclient.force_call(True)
+        g.set_interval(1)
+        g.sync_request()
         surface = g.draw(int(vars.width), int(vars.height))
         surface.write_to_png(self)
         print self.data
@@ -117,11 +115,11 @@ class ConfigForm(forms.Form):
 
     #load/save:
     def initial_data(self):
-        return sclient.graph_get_config()
+        return sclient.stats_get_config()
 
     def save(self, data):
         cfg = dict(data)
-        sclient.graph_set_config(cfg)
+        sclient.stats_set_config(cfg)
 
     #django newforms magic: define config fields:
     test = forms.CharField(label=_("Test config value"))
