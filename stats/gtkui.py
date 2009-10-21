@@ -191,7 +191,6 @@ class GraphsTab(Tab):
 
     def _on_notebook_switch_page(self, notebook, page, page_num):
         p = notebook.get_nth_page(page_num)
-        log.debug("Switching graph page %s" % p)
         if p is self.bandwidth_graph:
             self.select_bandwidth_graph()
             self.update_graph()
