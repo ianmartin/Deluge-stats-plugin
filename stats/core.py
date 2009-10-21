@@ -1,6 +1,7 @@
 #
 # core.py
 #
+# Copyright (C) 2009 Ian Martin <ianmartin@cantab.net>
 # Copyright (C) 2008 Damien Churchill <damoxc@gmail.com>
 # Copyright (C) 2008 Martijn Voncken <mvoncken@gmail.com>
 # Copyright (C) Marcos Pinto 2007 <markybob@gmail.com>

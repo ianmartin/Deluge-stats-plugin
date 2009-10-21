@@ -1,6 +1,7 @@
 #
 # gtkui.py
 #
+# Copyright (C) 2009 Ian Martin <ianmartin@cantab.net>
 # Copyright (C) 2008 Martijn Voncken <mvoncken@gmail.com>
 #
 # Basic plugin template created by:

@@ -1,6 +1,6 @@
 #
 # setup.py
-#
+# Copyright (C) 2009 Ian Martin <ianmartin@cantab.net>
 # Copyright (C) 2008 Martijn Voncken <mvoncken@gmail.com>
 #
 # Basic plugin template created by:
@@ -37,13 +37,16 @@
 from setuptools import setup
 
 __plugin_name__ = "Stats"
-__author__ = "Martijn Voncken"
-__author_email__ = "mvoncken@gmail.com"
-__version__ = "0.11"
+__author__ = "Ian Martin"
+__author_email__ = "ianmartin@cantab.net"
+__version__ = "0.2.0"
 __url__ = "http://deluge-torrent.org"
 __license__ = "GPLv3"
-__description__ = ""
-__long_description__ = """"""
+__description__ = "Display stats graphs"
+__long_description__ = """
+Records lots of extra stats
+and produces time series
+graphs"""
 __pkg_data__ = {__plugin_name__.lower(): ["template/*", "data/*"]}
 
 setup(
