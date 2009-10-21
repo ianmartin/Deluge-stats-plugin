@@ -101,6 +101,7 @@ class Core(CorePluginBase):
             'dht_nodes',
             'dht_cache_nodes',
             'dht_torrents',
+            'num_peers',
         )
 
         #update interval needs to be at least as rapid as min interval...
