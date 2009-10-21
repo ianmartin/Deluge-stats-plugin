@@ -64,6 +64,9 @@ def neat_time(column, cell, model, iter):
     cell.set_property('text', text)
     return
 
+def int_str(number):
+    return (str(int(number)))
+
 
 class GraphsTab(Tab):
     def __init__(self, glade):
@@ -71,20 +74,24 @@ class GraphsTab(Tab):
         self.glade = glade
         self.window = self.glade.get_widget('graph_tab')
         self.notebook = self.glade.get_widget('graph_notebook')
+        self.notebook.connect("switch-page", self._on_notebook_switch_page)
         self.label = self.glade.get_widget('graph_label')
 
         self._name = 'Graphs'
         self._child_widget = self.window
         self._tab_label = self.label
         self.bandwidth_graph = self.glade.get_widget('bandwidth_graph')
-        self.bandwidth_graph.connect('expose_event', self.bandwidth_expose)
+        self.bandwidth_graph.connect('expose_event', self.graph_expose)
 
-        self.graph_widget = self.bandwidth_graph
-        self.graph = graph.Graph()
-        self.graph.add_stat('download_rate', label='Download Rate', color=graph.green)
-        self.graph.add_stat('upload_rate', label='Upload Rate', color=graph.blue)
-        self.graph.set_left_axis(formatter=fspeed, min=10240)
-        self.graph.set_interval(1) #should come from config or similar
+        self.connections_graph = self.glade.get_widget('connections_graph')
+        self.connections_graph.connect('expose_event', self.graph_expose)
+
+        self.seeds_graph = self.glade.get_widget('seeds_graph')
+        self.seeds_graph.connect('expose_event', self.graph_expose)
+
+        self.selected_interval = 1 #should come from config or similar
+        self.select_bandwidth_graph()
+
         self.window.unparent()
         self.label.unparent()
 
@@ -110,7 +117,7 @@ class GraphsTab(Tab):
         if self.update_timer is not None:
             gobject.source_remove(self.update_timer)
      
-    def bandwidth_expose(self, widget, event):
+    def graph_expose(self, widget, event):
         context = self.graph_widget.window.cairo_create()
         # set a clip region
         context.rectangle(event.area.x, event.area.y,
@@ -131,6 +138,36 @@ class GraphsTab(Tab):
     def update_intervals(self):
         aclient.stats_get_intervals(self._on_intervals_changed)
 
+    def select_bandwidth_graph(self):
+        log.debug("Selecting bandwidth graph")
+        self.graph_widget =  self.bandwidth_graph
+        self.graph = graph.Graph()
+        self.graph.add_stat('download_rate', label='Download Rate', color=graph.green)
+        self.graph.add_stat('upload_rate', label='Upload Rate', color=graph.blue)
+        self.graph.set_left_axis(formatter=fspeed, min=10240)
+        self.graph.set_interval(self.selected_interval)
+
+
+    def select_connections_graph(self):
+        log.debug("Selecting connections graph")
+        self.graph_widget =  self.connections_graph
+        g = graph.Graph()
+        self.graph = g
+        g.add_stat('dht_nodes', color=graph.orange)
+        g.add_stat('dht_cache_nodes', color=graph.blue)
+        g.add_stat('dht_torrents', color=graph.green)
+        g.add_stat('num_connections', color=graph.darkred) #testing : non dht
+        g.set_left_axis(formatter=int_str, min=10)
+        self.graph.set_interval(self.selected_interval)
+
+    def select_seeds_graph(self):
+        log.debug("Selecting connections graph")
+        self.graph_widget =  self.seeds_graph
+        self.graph = graph.Graph()
+        self.graph.add_stat('num_peers', color=graph.blue)
+        self.graph.set_left_axis(formatter=int_str, min=10)
+        self.graph.set_interval(self.selected_interval)
+
 
     def _on_intervals_changed(self, intervals):
         liststore = gtk.ListStore(int)
@@ -150,6 +187,20 @@ class GraphsTab(Tab):
         self.selected_interval = model.get_value(iter, 0)
         self.graph.set_interval(self.selected_interval)
         self.update_graph()
+        return True
+
+    def _on_notebook_switch_page(self, notebook, page, page_num):
+        p = notebook.get_nth_page(page_num)
+        log.debug("Switching graph page %s" % p)
+        if p is self.bandwidth_graph:
+            self.select_bandwidth_graph()
+            self.update_graph()
+        elif p is self.connections_graph:
+            self.select_connections_graph()
+            self.update_graph()
+        elif p is self.seeds_graph:
+            self.select_seeds_graph()
+            self.update_graph()
         return True
 
 class GtkUI(object):
