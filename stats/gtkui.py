@@ -231,7 +231,9 @@ class GtkUI(object):
         self.plugin.deregister_hook("on_show_prefs", self.on_show_prefs)
         # Remove the right hand tab, lets hope it's our one!
         self.graphs_tab.stop()
-        self.torrent_details.notebook.remove_page(-1)
+        page = self.torrent_details.notebook.page_num(self.graphs_tab.window)
+        if page is not -1:
+            self.torrent_details.notebook.remove_page(page)
         del self.graphs_tab
 
     def on_apply_prefs(self):
