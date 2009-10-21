@@ -194,6 +194,7 @@ class Graph:
 
         height = self.height - self.line_size - 22
         #max_value = float(round(max_value, len(str(max_value)) * -1))
+        max_value = math.ceil(max_value / 5.0) * 5
         max_value = float(max_value)
         ratio = height / max_value
 
