@@ -32,6 +32,7 @@
 #    exception, you may extend this exception to your version of the file(s),
 #    but you are not obligated to do so. If you do not wish to do so, delete
 #    this exception statement from your version. If you delete this exception
+#    statement from all source files in the program, then also delete it here.
 
 """
 port of old plugin by markybob.
@@ -40,7 +41,7 @@ import time
 import math
 import cairo
 from deluge.log import LOG as log
-from deluge.ui.client import aclient, sclient
+from deluge.ui.client import client
 
 black = (0, 0, 0)
 gray = (0.75, 0.75, 0.75)
@@ -92,28 +93,19 @@ class Graph:
             'color': color
             }
 
-    def async_request(self):
-        """Asyncronously updates the graph information"""
-        aclient.stats_get_stats(self.set_stats, self.stat_info.keys(), self.interval)
-        
-
-    def sync_request(self):
-        """Syncronously updates the graph information"""
-        stats = sclient.stats_get_stats(self.stat_info.keys(), self.interval)
-        self.set_stats(stats)
-
     def set_stats(self, stats):
         self.last_update = stats["_last_update"]
         del stats["_last_update"]
         self.length = stats["_length"]
         del stats["_length"]
-        self.update_interval = stats["_update_interval"]
+        self.interval = stats["_update_interval"]
         del stats["_update_interval"]
         self.stats = stats
+        return
 
-    def set_config(self, config):
-        self.length = config["length"]
-        self.interval = config["update_interval"]
+  #  def set_config(self, config):
+  #      self.length = config["length"]
+  #      self.interval = config["update_interval"]
 
     def set_interval(self, interval):
         self.interval = interval

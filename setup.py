@@ -39,7 +39,7 @@ from setuptools import setup
 __plugin_name__ = "Stats"
 __author__ = "Ian Martin"
 __author_email__ = "ianmartin@cantab.net"
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __url__ = "http://deluge-torrent.org"
 __license__ = "GPLv3"
 __description__ = "Display stats graphs"
@@ -67,7 +67,7 @@ setup(
     %s = %s:CorePlugin
     [deluge.plugin.gtkui]
     %s = %s:GtkUIPlugin
-    [deluge.plugin.webui]
+    [deluge.plugin.web]
     %s = %s:WebUIPlugin
     """ % ((__plugin_name__, __plugin_name__.lower())*3)
 )

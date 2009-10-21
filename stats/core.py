@@ -33,30 +33,28 @@
 #    but you are not obligated to do so. If you do not wish to do so, delete
 #    this exception statement from your version. If you delete this exception
 
+from twisted.internet.task import LoopingCall
 import time
 
 import deluge
 from deluge.log import LOG as log
-from deluge.plugins.corepluginbase import CorePluginBase
+from deluge.plugins.pluginbase import CorePluginBase
 from deluge import component
 from deluge import configmanager
-import gobject
-
-#from deluge.plugins.coreclient import client #1.1 and later only
-#client: see http://dev.deluge-torrent.org/wiki/Development/UiClient#Remoteapi
+from deluge.core.rpcserver import export
 
 DEFAULT_PREFS = {
-    "test":"NiNiNi",
-    "update_interval":1000, #1 seconds.
-    "length":150, # 2 seconds * 150 --> 5 minutes.
+    "test": "NiNiNi",
+    "update_interval": 1, #2 seconds.
+    "length": 150, # 2 seconds * 150 --> 5 minutes.
 }
 
 DEFAULT_TOTALS = {
-    "total_upload":0,
-    "total_download":0,
-    "total_payload_upload":0,
-    "total_payload_download":0,
-    "stats":{}
+    "total_upload": 0,
+    "total_download": 0,
+    "total_payload_upload": 0,
+    "total_payload_download": 0,
+    "stats": {}
 }
 
 def get_key(config, key):
@@ -94,7 +92,10 @@ class Core(CorePluginBase):
         if self.totals == {}:
             self.totals.update(self.saved_stats.config)
 
+        self.length = self.config["length"]
+
         #self.stats = get_key(self.saved_stats, "stats") or {}
+        self.stats_keys = []
         self.add_stats(
             'upload_rate',
             'download_rate',
@@ -105,36 +106,51 @@ class Core(CorePluginBase):
             'num_peers',
         )
 
-        #update interval needs to be at least as rapid as min interval...
-        self.update_timer = gobject.timeout_add(
-            self.config["update_interval"], self.update_stats)
-        self.save_timer = gobject.timeout_add(60 * 1000, self.save_stats)
-        self.length = self.config["length"]
         self.update_stats()
+
+        self.update_timer = LoopingCall(self.update_stats)
+        self.update_timer.start(self.config["update_interval"])
+
+        self.save_timer = LoopingCall(self.save_stats)
+        self.save_timer.start(60)
 
     def disable(self):
         self.save_stats()
-        gobject.source_remove(self.update_timer)
-        gobject.source_remove(self.save_timer)
+        try:
+            self.update_timer.stop()
+            self.save_timer.stop()
+        except:
+            pass
 
     def add_stats(self, *stats):
         for stat in stats:
+            if stat not in self.stats_keys:
+                self.stats_keys.append(stat)
             for i in self.intervals:
                 if stat not in self.stats[i]:
                     self.stats[i][stat] = []
-          
 
     def update_stats(self):
         try:
             #Get all possible stats!
-            stats = self.core.export_get_stats()
-            status = self.core.session.status()
-            for stat in dir(status):
-                if not stat.startswith('_') and stat not in stats:
-                    stats[stat] = getattr(status, stat, None)
+            stats = {}
+            for key in self.stats_keys:
+                try:
+                    stats[key] = self.core.get_session_status(key)
+                except AttributeError:
+                    pass
+            stats["num_connections"]  = self.core.get_num_connections()
+            stats.update(self.core.get_config_values(["max_download",
+                                                      "max_upload",
+                                                      "max_num_connections"]))
+           # status = self.core.session.status()
+           # for stat in dir(status):
+           #     if not stat.startswith('_') and stat not in stats:
+           #         stats[stat] = getattr(status, stat, None)
 
             update_time = time.time()
             self.last_update[1] = update_time
+
             #extract the ones we are interested in
             #adding them to the 1s array
             for stat, stat_list in self.stats[1].iteritems():
@@ -171,8 +187,7 @@ class Core(CorePluginBase):
     def save_stats(self):
         try:
             self.saved_stats["stats"] = self.stats
-            for key, value in self.export_get_totals().iteritems():
-                self.saved_stats.config[key] = value              
+            self.saved_stats.config.update(self.get_totals())
             self.saved_stats.save()
         except Exception, e:
             log.error("Stats save error", e)
@@ -180,48 +195,52 @@ class Core(CorePluginBase):
 
 
     # export:
-    def export_get_stats(self, keys, interval):
-      
+    @export
+    def get_stats(self, keys, interval):
         if interval not in self.intervals:
             return None
 
         stats_dict = {}
-        for stat in self.stats[interval]:
-            if stat not in keys:
-                continue
-            stats_dict[stat] = self.stats[interval][stat]
+        for key in keys:
+            if key in self.stats[interval]:
+                stats_dict[key] = self.stats[interval][key]
           
         stats_dict["_last_update"] = self.last_update[interval]
         stats_dict["_length"] = self.config["length"]
         stats_dict["_update_interval"] = interval
         return stats_dict
 
-    def export_get_totals(self):
+    @export
+    def get_totals(self):
         result = {}
-        session_totals = self.export_get_session_totals()
+        session_totals = self.get_session_totals()
         for key in session_totals:
             result[key] = self.totals[key] + session_totals[key]
         return result
 
-    def export_get_session_totals(self):
+    @export
+    def get_session_totals(self):
         status = self.core.session.status()
         return {
-            "total_upload":status.total_upload,
-            "total_download":status.total_download,
-            "total_payload_upload":status.total_payload_upload,
-            "total_payload_download":status.total_payload_download
+            "total_upload": status.total_upload,
+            "total_download": status.total_download,
+            "total_payload_upload": status.total_payload_upload,
+            "total_payload_download": status.total_payload_download
         }
 
-    def export_set_config(self, config):
+    @export
+    def set_config(self, config):
         "sets the config dictionary"
         for key in config.keys():
             self.config[key] = config[key]
         self.config.save()
 
-    def export_get_config(self):
+    @export
+    def get_config(self):
         "returns the config dictionary"
         return self.config.config
 
-    def export_get_intervals(self):
+    @export
+    def get_intervals(self):
         "Returns the available resolutions"
         return self.intervals

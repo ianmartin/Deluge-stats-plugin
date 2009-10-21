@@ -1,11 +1,7 @@
 #
-# __init__.py
+# common.py
 #
-# Copyright (C) 2008 Martijn Voncken <mvoncken@gmail.com>
-#
-# Basic plugin template created by:
-# Copyright (C) 2008 Martijn Voncken <mvoncken@gmail.com>
-# Copyright (C) 2007, 2008 Andrew Resch <andrewresch@gmail.com>
+# Copyright (C) 2009 Andrew Resch <andrewresch@gmail.com>
 #
 # Deluge is free software.
 #
@@ -36,22 +32,8 @@
 #    statement from all source files in the program, then also delete it here.
 #
 
-from deluge.plugins.init import PluginInitBase
+import pkg_resources
+import os.path
 
-class CorePlugin(PluginInitBase):
-    def __init__(self, plugin_name):
-        from core import Core as _plugin_cls
-        self._plugin_cls = _plugin_cls
-        super(CorePlugin, self).__init__(plugin_name)
-
-class GtkUIPlugin(PluginInitBase):
-    def __init__(self, plugin_name):
-        from gtkui import GtkUI as _plugin_cls
-        self._plugin_cls = _plugin_cls
-        super(GtkUIPlugin, self).__init__(plugin_name)
-
-class WebUIPlugin(PluginInitBase):
-    def __init__(self, plugin_name):
-        from webui import WebUI as _plugin_cls
-        self._plugin_cls = _plugin_cls
-        super(WebUIPlugin, self).__init__(plugin_name)
+def get_resource(filename):
+    return pkg_resources.resource_filename("stats", os.path.join("data", filename))

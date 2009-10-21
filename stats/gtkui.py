@@ -35,11 +35,6 @@
 #    but you are not obligated to do so. If you do not wish to do so, delete
 #    this exception statement from your version. If you delete this exception
 
-# It should be noted that torrentdetails.add_tab() cannot be used
-# On exit the position of all displayed tabs is saved in tabs.state
-# then on restart TorrentDetails tries to lookup default_tabs["Graphs"]
-# and deluge exits with a key exception
-
 import gtk
 import gobject
 from gtk.glade import XML
@@ -48,8 +43,11 @@ import graph
 from deluge import component
 from deluge.log import LOG as log
 from deluge.common import fspeed
-from deluge.ui.client import aclient
+from deluge.ui.client import client
 from deluge.ui.gtkui.torrentdetails import Tab
+from deluge.plugins.pluginbase import GtkPluginBase
+
+import common
 
 def neat_time(column, cell, model, iter):
     """Render seconds as seconds or minutes with label"""
@@ -75,7 +73,6 @@ class GraphsTab(Tab):
         self.glade = glade
         self.window = self.glade.get_widget('graph_tab')
         self.notebook = self.glade.get_widget('graph_notebook')
-        self.notebook.connect("switch-page", self._on_notebook_switch_page)
         self.label = self.glade.get_widget('graph_label')
 
         self._name = 'Graphs'
@@ -90,34 +87,23 @@ class GraphsTab(Tab):
         self.seeds_graph = self.glade.get_widget('seeds_graph')
         self.seeds_graph.connect('expose_event', self.graph_expose)
 
+        self.notebook.connect('switch-page', self._on_notebook_switch_page)
+
         self.selected_interval = 1 #should come from config or similar
         self.select_bandwidth_graph()
 
         self.window.unparent()
         self.label.unparent()
 
-        self.update_timer = None
-
-        self.selected_interval = 0
         self.intervals = None
         self.intervals_combo = self.glade.get_widget('combo_intervals')
         cell = gtk.CellRendererText()
         self.intervals_combo.pack_start(cell, True)
         self.intervals_combo.set_cell_data_func(cell, neat_time)
         self.intervals_combo.connect("changed", self._on_selected_interval_changed)
-
-
-    def start(self):
-        log.debug("Graph tab starting")
-        self.update_graph()
-        #this must follow update_graph else the force_call makes things co crazy
         self.update_intervals()
-        self.update_timer = gobject.timeout_add(1000, self.update_graph)
 
-    def stop(self):
-        if self.update_timer is not None:
-            gobject.source_remove(self.update_timer)
-     
+
     def graph_expose(self, widget, event):
         context = self.graph_widget.window.cairo_create()
         # set a clip region
@@ -130,14 +116,19 @@ class GraphsTab(Tab):
         #Do not propagate the event
         return False
 
-    def update_graph(self):
-        self.graph.async_request()
-        aclient.force_call(True)
-        self.graph_widget.queue_draw()
+    def update(self):
+        d1 = client.stats.get_stats(self.graph.stat_info.keys(), self.selected_interval)
+        d1.addCallback(self.graph.set_stats)
+        def _update_complete(result):
+            self.graph_widget.queue_draw()
+        d1.addCallback(_update_complete)
         return True
 
+    def clear(self):
+        pass
+
     def update_intervals(self):
-        aclient.stats_get_intervals(self._on_intervals_changed)
+        client.stats.get_intervals().addCallback(self._on_intervals_changed)
 
     def select_bandwidth_graph(self):
         log.debug("Selecting bandwidth graph")
@@ -146,8 +137,6 @@ class GraphsTab(Tab):
         self.graph.add_stat('download_rate', label='Download Rate', color=graph.green)
         self.graph.add_stat('upload_rate', label='Upload Rate', color=graph.blue)
         self.graph.set_left_axis(formatter=fspeed, min=10240)
-        self.graph.set_interval(self.selected_interval)
-
 
     def select_connections_graph(self):
         log.debug("Selecting connections graph")
@@ -159,7 +148,6 @@ class GraphsTab(Tab):
         g.add_stat('dht_torrents', color=graph.green)
         g.add_stat('num_connections', color=graph.darkred) #testing : non dht
         g.set_left_axis(formatter=int_str, min=10)
-        self.graph.set_interval(self.selected_interval)
 
     def select_seeds_graph(self):
         log.debug("Selecting connections graph")
@@ -167,8 +155,6 @@ class GraphsTab(Tab):
         self.graph = graph.Graph()
         self.graph.add_stat('num_peers', color=graph.blue)
         self.graph.set_left_axis(formatter=int_str, min=10)
-        self.graph.set_interval(self.selected_interval)
-
 
     def _on_intervals_changed(self, intervals):
         liststore = gtk.ListStore(int)
@@ -186,94 +172,51 @@ class GraphsTab(Tab):
         model = combobox.get_model()
         iter = combobox.get_active_iter()
         self.selected_interval = model.get_value(iter, 0)
-        self.graph.set_interval(self.selected_interval)
-        self.update_graph()
+        self.update()
         return True
 
     def _on_notebook_switch_page(self, notebook, page, page_num):
         p = notebook.get_nth_page(page_num)
         if p is self.bandwidth_graph:
             self.select_bandwidth_graph()
-            self.update_graph()
+            self.update()
         elif p is self.connections_graph:
             self.select_connections_graph()
-            self.update_graph()
+            self.update()
         elif p is self.seeds_graph:
             self.select_seeds_graph()
-            self.update_graph()
+            self.update()
         return True
 
-class GtkUI(object):
-    def __init__(self, plugin_api, plugin_name):
-        log.debug("Calling Stats UI init")
-        self.plugin = plugin_api
-
+class GtkUI(GtkPluginBase):
     def enable(self):
-        self.glade = XML(self.get_resource("config.glade"))
-        self.plugin.add_preferences_page("Stats", self.glade.get_widget("prefs_box"))
-        self.plugin.register_hook("on_apply_prefs", self.on_apply_prefs)
-        self.plugin.register_hook("on_show_prefs", self.on_show_prefs)
+        log.debug("Stats plugin enable called")
+        self.glade = XML(common.get_resource("config.glade"))
+        component.get("Preferences").add_page("Stats", self.glade.get_widget("prefs_box"))
+        component.get("PluginManager").register_hook("on_apply_prefs", self.on_apply_prefs)
+        component.get("PluginManager").register_hook("on_show_prefs", self.on_show_prefs)
         self.on_show_prefs()
 
-        self.graphs_tab = GraphsTab(XML(self.get_resource("tabs.glade")))
+        self.graphs_tab = GraphsTab(XML(common.get_resource("tabs.glade")))
         self.torrent_details = component.get('TorrentDetails')
-        self.torrent_details.notebook.append_page(self.graphs_tab.window, self.graphs_tab.label)
-        self.notebook_signals = []
-        self.notebook_signals.append(self.torrent_details.notebook.connect("switch-page", self._on_notebook_switch_page))
-        self.notebook_signals.append(self.torrent_details.notebook.connect("hide", self._on_notebook_hide))
-        self.notebook_signals.append(self.torrent_details.notebook.connect("show", self._on_notebook_show))
-
+        self.torrent_details.add_tab(self.graphs_tab)
 
     def disable(self):
-        for signal in self.notebook_signals:
-            self.torrent_details.notebook.disconnect(signal)
-        self.plugin.remove_preferences_page("Stats")
-        self.plugin.deregister_hook("on_apply_prefs", self.on_apply_prefs)
-        self.plugin.deregister_hook("on_show_prefs", self.on_show_prefs)
-        # Remove the right hand tab, lets hope it's our one!
-        self.graphs_tab.stop()
-        page = self.torrent_details.notebook.page_num(self.graphs_tab.window)
-        if page is not -1:
-            self.torrent_details.notebook.remove_page(page)
-        del self.graphs_tab
+        component.get("Preferences").remove_page("Stats")
+        component.get("PluginManager").deregister_hook("on_apply_prefs", self.on_apply_prefs)
+        component.get("PluginManager").deregister_hook("on_show_prefs", self.on_show_prefs)
+        self.torrent_details.remove_tab(self.graphs_tab.get_name())
 
     def on_apply_prefs(self):
         log.debug("applying prefs for Stats")
         config = {
             "test":self.glade.get_widget("txt_test").get_text()
         }
-        aclient.stats_set_config(None, config)
+        client.stats.set_config(config)
 
     def on_show_prefs(self):
-        aclient.stats_get_config(self.cb_get_config)
+        client.stats.get_config().addCallback(self.cb_get_config)
 
     def cb_get_config(self, config):
         "callback for on show_prefs"
         self.glade.get_widget("txt_test").set_text(config["test"])
-
-    def get_resource(self, filename):
-        import pkg_resources, os
-        return pkg_resources.resource_filename("stats", os.path.join("data", filename))
-
-
-
-    def _on_notebook_switch_page(self,notebook, page, page_num):
-        if notebook.get_nth_page(page_num) is self.graphs_tab.window:
-            self.graphs_tab.start()
-        else:
-            self.graphs_tab.stop()
-        return True
-
-    def _on_notebook_hide(self, widget):
-        self.graphs_tab.stop()
-        return True
-
-    def _on_notebook_show(self, notebook):
-        #annoyingly the torrentdetails behaviour is different when removing all tabs
-        #It removes all tabs from the notebook when hiding itself, so we have to add
-        #our tab back
-        
-        #check the graphs tab is displayed, if not add it
-        if notebook.page_num(self.graphs_tab.window) is -1:
-            notebook.append_page(self.graphs_tab.window, self.graphs_tab.label)
-        return True
