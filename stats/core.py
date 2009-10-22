@@ -135,8 +135,10 @@ class Core(CorePluginBase):
             #Get all possible stats!
             stats = {}
             for key in self.stats_keys:
+                #try all keys we have, very inefficient but saves having to
+                #work out where a key comes from...
                 try:
-                    stats[key] = self.core.get_session_status(key)
+                    stats.update(self.core.get_session_status([key]))
                 except AttributeError:
                     pass
             stats["num_connections"]  = self.core.get_num_connections()
