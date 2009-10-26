@@ -122,18 +122,10 @@ class Graph:
         return self.ctx
 
     def draw(self, width, height):
-        self.width = width
-        self.height = height
-
-        self.surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, self.width, self.height)
-        self.ctx = cairo.Context(self.surface)
-        self.draw_rect(white, 0, 0, self.width, self.height)
-        self.draw_x_axis()
-        self.draw_left_axis()
-
-        if self.legend_selected:
-            self.draw_legend()
-        return self.surface
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
+        ctx = cairo.Context(surface)
+        self.draw_to_context(ctx, width, height)
+        return surface
 
     def draw_x_axis(self):
         duration = self.length * self.interval
