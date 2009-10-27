@@ -54,6 +54,13 @@ orange = (1.0, 0.74, 0)
 def default_formatter(value):
     return str(value)
 
+def size_formatter_scale(value):
+    scale = 1.0
+    for i in range(0,3):
+        scale = scale * 1024.0
+        if value / scale < 1024:
+            return scale
+
 def change_opacity(color, opactiy):
     """A method to assist in changing the opactiy of a color inorder to draw the
     fills.
@@ -72,6 +79,7 @@ class Graph:
         self.length = 150
         self.stat_info = {}
         self.line_size = 2
+        self.dash_length = [10]
         self.mean_selected = True
         self.legend_selected = True
         self.max_selected = True
@@ -122,11 +130,7 @@ class Graph:
         self.ctx = context
         self.width, self.height = width, height
         self.draw_rect(white, 0, 0, self.width, self.height)
-        self.draw_x_axis()
-        self.draw_left_axis()
-
-        if self.legend_selected:
-            self.draw_legend()
+        self.draw_graph()
         return self.ctx
 
     def draw(self, width, height):
@@ -135,10 +139,12 @@ class Graph:
         self.draw_to_context(ctx, width, height)
         return surface
 
-    def draw_x_axis(self):
+
+    def draw_x_axis(self, bounds):
+        (left, top, right, bottom) = bounds
         duration = self.length * self.interval
         start = self.last_update - duration
-        ratio = (self.width - 40) / float(duration)
+        ratio = (right - left) / float(duration)
    
         if duration < 1800 * 10:
             #try rounding to nearest 1min, 5mins, 10mins, 30mins
@@ -155,86 +161,148 @@ class Graph:
 
         for i in xrange(0, duration/x_step + 1):
             text = time.strftime('%H:%M', time.localtime(start + seconds_to_step  + i*x_step))
-            x = int(ratio * (seconds_to_step + i*x_step))
-            self.draw_text(text, x + 46, self.height - 20)
-            x = x + 59.5
-            self.draw_dotted_line(gray, x, 20, x, self.height - 20)
+            # + 0.5 to allign x to nearest pixel
+            x = int(ratio * (seconds_to_step + i*x_step) + left) + 0.5
+            self.draw_x_text(text, x, bottom)
+            self.draw_dotted_line(gray, x, top-0.5, x, bottom+0.5)
 
-        y = self.height - 22.5
-        self.draw_dotted_line(gray, 60, y, int(self.width), y)
+        self.draw_line(gray, left, bottom+0.5, right, bottom+0.5)
 
-    def draw_left_axis(self):
+    def draw_graph(self):
+        font_extents = self.ctx.font_extents()
+        x_axis_space = font_extents[2] + 2 + self.line_size / 2.0
+        plot_height = self.height - x_axis_space
+        #lets say we need 2n-1*font height pixels to plot the y ticks
+        tick_limit = (plot_height / font_extents[3] )# / 2.0
+
+        max_value = 0
+        for stat in self.stat_info:
+            if self.stat_info[stat]['axis'] == 'left':
+                try:
+                    l_max =  max(self.stats[stat])
+                except ValueError:
+                    l_max = 0
+                if l_max > max_value:
+                    max_value = l_max
+        if max_value < self.left_axis['min']:
+            max_value = self.left_axis['min']
+
+        y_ticks = self.intervalise(max_value, tick_limit)
+        max_value = y_ticks[-1]
+        #find the width of the y_ticks
+        y_tick_text = [self.left_axis['formatter'](tick) for tick in y_ticks]
+        def space_required(text):
+            te = self.ctx.text_extents(text)
+            return math.ceil(te[4] - te[0])
+        y_tick_width = max((space_required(text) for text in y_tick_text))
+
+        top = font_extents[2] / 2.0
+        #bounds(left, top, right, bottom)
+        bounds = (y_tick_width + 4, top + 2,  self.width, self.height - x_axis_space)
+
+        self.draw_x_axis(bounds)
+        self.draw_left_axis(bounds, y_ticks, y_tick_text)
+    
+    def intervalise(self, x, limit=None):
+        """Given a value x create an array of tick points to got with the graph
+        The number of ticks returned can be constrained by limit, minimum of 3
+        """
+    #Limit is the number of ticks which is 1 + the number of steps as we
+    #count the 0 tick in limit
+        if limit is not None:
+            if limit <3:
+                limit = 2
+            else:
+                limit = limit -1
+        scale = 1
+        if 'formatter_scale' in self.left_axis:
+            scale = self.left_axis['formatter_scale'](x)
+            x = x / float(scale)
+
+    #Find the largest power of 10 less than x
+        log = math.log10(x)
+        intbit = math.floor(log)
+
+        interval = math.pow(10, intbit)    
+        steps =  int(math.ceil(x / interval))
+    
+        if steps <= 1 and (limit is None or limit >= 10*steps):
+            interval = interval * 0.1
+            steps = steps * 10
+        elif steps <= 2 and (limit is None or limit >= 5*steps):
+            interval = interval * 0.2
+            steps = steps * 5
+        elif steps <=5 and (limit is None or limit >= 2*steps):
+            interval = interval * 0.5
+            steps = steps * 2
+
+        if limit is not None and steps > limit:
+            multi = steps / float(limit)
+            if multi > 2:
+                interval = interval * 5
+            else:
+                interval = interval * 2
+                
+        intervals = [i * interval * scale for  i in xrange(1+int(math.ceil(x/ interval)))]
+        return intervals
+
+    def draw_left_axis(self, bounds, y_ticks, y_tick_text):
+        (left, top, right, bottom) = bounds
         stats = {}
-        max_values = []
         for stat in self.stat_info:
             if self.stat_info[stat]['axis'] == 'left':
                 stats[stat] = self.stat_info[stat]
                 stats[stat]['values'] = self.stats[stat]
                 stats[stat]['fill_color'] = change_opacity(stats[stat]['color'], 0.5)
                 stats[stat]['color'] = change_opacity(stats[stat]['color'], 0.8)
-                try:
-                    stats[stat]['max_value'] = max(self.stats[stat])
-                except ValueError:
-                    stats[stat]['max_value'] = 0
-                max_values.append(stats[stat]['max_value'])
-        if len(max_values) > 1:
-            max_value = max(*max_values)
-        else:
-            max_value = max_values[0]
 
-        if max_value < self.left_axis['min']:
-            max_value = self.left_axis['min']
-
-        height = self.height - self.line_size - 22
-        #max_value = float(round(max_value, len(str(max_value)) * -1))
-        max_value = math.ceil(max_value / 5.0) * 5
-        max_value = float(max_value)
+        height =  bottom - top
+        max_value = y_ticks[-1]
         ratio = height / max_value
 
-        for i in xrange(1, 6):
-            y = int(ratio * ((max_value / 5) * i)) - 0.5
-            if i < 5:
-                self.draw_dotted_line(gray, 60, y, self.width, y)
-            text = self.left_axis['formatter']((max_value / 5) * (5 - i))
-            self.draw_text(text, 0, y - 6)
-        self.draw_dotted_line(gray, 60.5, 20, 60.5, self.height - 20)
+        for i, y_val in enumerate(y_ticks):
+            y = int(bottom - y_val * ratio ) - 0.5
+            if i != 0:
+                self.draw_dotted_line(gray, left, y, right, y)
+            self.draw_y_text(y_tick_text[i], left, y)
+        self.draw_line(gray, left, top, left, bottom)
 
         for stat, info in stats.iteritems():
             if len(info['values']) > 0:
-                self.draw_value_poly(info['values'], info['color'], max_value)
-                self.draw_value_poly(info['values'], info['fill_color'], max_value, info['fill'])
+                self.draw_value_poly(info['values'], info['color'], max_value, bounds)
+                self.draw_value_poly(info['values'], info['fill_color'], max_value, bounds, info['fill'])
 
     def draw_legend(self):
         pass
 
-    def trace_path(self, values, max_value):
-        height = self.height - 24
-        width = self.width
+
+    def trace_path(self, values, max_value, bounds):
+        (left, top, right, bottom) = bounds
+        ratio = (bottom - top) / max_value
         line_width = self.line_size
 
         self.ctx.set_line_width(line_width)
-        self.ctx.move_to(width, height)
+        self.ctx.move_to(right, bottom)
 
-        self.ctx.line_to(width,
-                         int(height - ((height - 28) * values[0] / float(max_value))))
+        self.ctx.line_to(right, int(bottom -  values[0] * ratio ))
 
-        x = width
-        step = (width - 60) / float(self.length)
+        x = right
+        step = (right - left) / float(self.length -1)
         for i, value in enumerate(values):
             if i == self.length - 1:
-                x = 62
-            self.ctx.line_to(x,
-                int(height - 1 - ((height - 28) * value / float(max_value)))
-            )
+                x = left
+
+            self.ctx.line_to(x, int(bottom - value * ratio))
             x -= step
 
         self.ctx.line_to(
-            int(width  - (((len(values) - 1) * (width-62)) / float(self.length - 1))),
-            height)
+            int(right  - (len(values) - 1) * step),
+            bottom)
         self.ctx.close_path()
 
-    def draw_value_poly(self, values, color, max_value, fill=False):
-        self.trace_path(values, max_value)
+
+    def draw_value_poly(self, values, color, max_value, bounds, fill=False):
+        self.trace_path(values, max_value, bounds)
         self.ctx.set_source_rgba(*color)
 
         if fill:
@@ -242,9 +310,26 @@ class Graph:
         else:
             self.ctx.stroke()
 
-    def draw_text(self, text, x, y):
-        self.ctx.set_font_size(9)
-        self.ctx.move_to(x, y + 9)
+    def draw_x_text(self, text, x, y):
+        """Draws text below and horizontally centered about x,y"""
+        fe = self.ctx.font_extents()
+        te = self.ctx.text_extents(text)
+        height = fe[2]
+        x_bearing = te[0]
+        width = te[2]
+        self.ctx.move_to(int(x - width/2.0 + x_bearing), int(y + height))
+        self.ctx.set_source_rgba(*self.black)
+        self.ctx.show_text(text)
+
+    def draw_y_text(self, text, x, y):
+        """Draws text left of and vertically centered about x,y"""
+        fe = self.ctx.font_extents()
+        te = self.ctx.text_extents(text)
+        descent = fe[1]
+        ascent = fe[0]
+        x_bearing = te[0]
+        width = te[4]
+        self.ctx.move_to(int(x - width - x_bearing - 2), int(y + (ascent - descent)/2.0))
         self.ctx.set_source_rgba(*self.black)
         self.ctx.show_text(text)
 
@@ -263,13 +348,12 @@ class Graph:
     def draw_dotted_line(self, color, x1, y1, x2, y2):
         self.ctx.set_source_rgba(*color)
         self.ctx.set_line_width(1)
+        dash, offset = self.ctx.get_dash()
+        self.ctx.set_dash(self.dash_length, 0)
         self.ctx.move_to(x1, y1)
         self.ctx.line_to(x2, y2)
-        #self.ctx.stroke_preserve()
-        #self.ctx.set_source_rgba(*white)
-        #self.ctx.set_dash((1, 1), 4)
         self.ctx.stroke()
-        #self.ctx.set_dash((1, 1), 0)
+        self.ctx.set_dash(dash, offset)
 
 if __name__ == "__main__":
     import test
