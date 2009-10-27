@@ -136,7 +136,8 @@ class GraphsTab(Tab):
         self.graph = graph.Graph()
         self.graph.add_stat('download_rate', label='Download Rate', color=graph.green)
         self.graph.add_stat('upload_rate', label='Upload Rate', color=graph.blue)
-        self.graph.set_left_axis(formatter=fspeed, min=10240)
+        self.graph.set_left_axis(formatter=fspeed, min=10240,
+                                 formatter_scale=graph.size_formatter_scale)
 
     def select_connections_graph(self):
         log.debug("Selecting connections graph")
