@@ -40,6 +40,7 @@ import gobject
 from gtk.glade import XML
 
 import graph
+import deluge
 from deluge import component
 from deluge.log import LOG as log
 from deluge.common import fspeed
@@ -48,6 +49,21 @@ from deluge.ui.gtkui.torrentdetails import Tab
 from deluge.plugins.pluginbase import GtkPluginBase
 
 import common
+
+DEFAULT_CONF = { 'version': 1,
+                 'colors' :{
+                 'bandwidth_graph': {'upload_rate': str(gtk.gdk.Color("blue")),
+                                     'download_rate': str(gtk.gdk.Color("green")),
+                                    },
+                 'connections_graph': { 'dht_nodes': str(gtk.gdk.Color("orange")),
+                                        'dht_cache_nodes': str(gtk.gdk.Color("blue")),
+                                        'dht_torrents': str(gtk.gdk.Color("green")),
+                                        'num_connections': str(gtk.gdk.Color("darkred")),
+                                      },
+                 'seeds_graph': { 'num_peers': str(gtk.gdk.Color("blue")),
+                                  },
+                 }
+                 }
 
 def neat_time(column, cell, model, iter):
     """Render seconds as seconds or minutes with label"""
@@ -66,9 +82,18 @@ def neat_time(column, cell, model, iter):
 def int_str(number):
     return (str(int(number)))
 
+def gtk_to_graph_color(color):
+    """Turns a gtk.gdk.Color into a tuple with range 0-1 as used by the graph"""
+    MAX = float(65535)
+    gtk_color = gtk.gdk.Color(color)
+    red = gtk_color.red / MAX
+    green = gtk_color.green / MAX
+    blue = gtk_color.blue / MAX
+    return (red, green, blue)
+
 
 class GraphsTab(Tab):
-    def __init__(self, glade):
+    def __init__(self, glade, colors):
         Tab.__init__(self)
         self.glade = glade
         self.window = self.glade.get_widget('graph_tab')
@@ -78,6 +103,9 @@ class GraphsTab(Tab):
         self._name = 'Graphs'
         self._child_widget = self.window
         self._tab_label = self.label
+
+        self.colors = colors
+
         self.bandwidth_graph = self.glade.get_widget('bandwidth_graph')
         self.bandwidth_graph.connect('expose_event', self.graph_expose)
 
@@ -134,8 +162,11 @@ class GraphsTab(Tab):
         log.debug("Selecting bandwidth graph")
         self.graph_widget =  self.bandwidth_graph
         self.graph = graph.Graph()
-        self.graph.add_stat('download_rate', label='Download Rate', color=graph.green)
-        self.graph.add_stat('upload_rate', label='Upload Rate', color=graph.blue)
+        colors = self.colors['bandwidth_graph']
+        self.graph.add_stat('download_rate', label='Download Rate',
+                            color=gtk_to_graph_color(colors['download_rate']))
+        self.graph.add_stat('upload_rate', label='Upload Rate',
+                            color=gtk_to_graph_color(colors['upload_rate']))
         self.graph.set_left_axis(formatter=fspeed, min=10240,
                                  formatter_scale=graph.size_formatter_scale)
 
@@ -144,18 +175,27 @@ class GraphsTab(Tab):
         self.graph_widget =  self.connections_graph
         g = graph.Graph()
         self.graph = g
-        g.add_stat('dht_nodes', color=graph.orange)
-        g.add_stat('dht_cache_nodes', color=graph.blue)
-        g.add_stat('dht_torrents', color=graph.green)
-        g.add_stat('num_connections', color=graph.darkred) #testing : non dht
+        colors = self.colors['connections_graph']
+        g.add_stat('dht_nodes', color=gtk_to_graph_color(colors['dht_nodes']))
+        g.add_stat('dht_cache_nodes', color=gtk_to_graph_color(colors['dht_cache_nodes']))
+        g.add_stat('dht_torrents', color=gtk_to_graph_color(colors['dht_torrents']))
+        g.add_stat('num_connections', color=gtk_to_graph_color(colors['num_connections']))
         g.set_left_axis(formatter=int_str, min=10)
 
     def select_seeds_graph(self):
         log.debug("Selecting connections graph")
         self.graph_widget =  self.seeds_graph
         self.graph = graph.Graph()
-        self.graph.add_stat('num_peers', color=graph.blue)
+        colors = self.colors['seeds_graph']
+        self.graph.add_stat('num_peers', color=gtk_to_graph_color(colors['num_peers']))
         self.graph.set_left_axis(formatter=int_str, min=10)
+
+    def set_colors(self, colors):
+        self.colors = colors
+        # Fake switch page to update the graph colors (HACKY)
+        self._on_notebook_switch_page(self.notebook,
+                                      None, #This is unused
+                                      self.notebook.get_current_page())
 
     def _on_intervals_changed(self, intervals):
         liststore = gtk.ListStore(int)
@@ -192,13 +232,14 @@ class GraphsTab(Tab):
 class GtkUI(GtkPluginBase):
     def enable(self):
         log.debug("Stats plugin enable called")
+        self.config = deluge.configmanager.ConfigManager("stats.gtkui.conf", DEFAULT_CONF)
         self.glade = XML(common.get_resource("config.glade"))
         component.get("Preferences").add_page("Stats", self.glade.get_widget("prefs_box"))
         component.get("PluginManager").register_hook("on_apply_prefs", self.on_apply_prefs)
         component.get("PluginManager").register_hook("on_show_prefs", self.on_show_prefs)
         self.on_show_prefs()
 
-        self.graphs_tab = GraphsTab(XML(common.get_resource("tabs.glade")))
+        self.graphs_tab = GraphsTab(XML(common.get_resource("tabs.glade")), self.config['colors'])
         self.torrent_details = component.get('TorrentDetails')
         self.torrent_details.add_tab(self.graphs_tab)
 
@@ -210,14 +251,31 @@ class GtkUI(GtkPluginBase):
 
     def on_apply_prefs(self):
         log.debug("applying prefs for Stats")
-        config = {
-            "test":self.glade.get_widget("txt_test").get_text()
-        }
+        gtkconf = {}
+        for graph, colors in self.config['colors'].items():
+            gtkconf[graph] = {}
+            for value, color in colors.items():
+                try:
+                    color_btn = self.glade.get_widget("%s_%s_color" % (graph, value))
+                    gtkconf[graph][value] = str(color_btn.get_color())
+                except:
+                    gtkconf[graph][value] = DEFAULT_CONF['colors'][graph][value]
+        self.config['colors'] = gtkconf
+        self.graphs_tab.set_colors(self.config['colors'])
+
+        config = { }
         client.stats.set_config(config)
 
     def on_show_prefs(self):
+        for graph, colors in self.config['colors'].items():
+            for value, color in colors.items():
+                try:
+                    color_btn = self.glade.get_widget("%s_%s_color" % (graph, value))
+                    color_btn.set_color(gtk.gdk.Color(color))
+                except:
+                    log.debug("Unable to set %s %s %s" % (graph, value, color))
         client.stats.get_config().addCallback(self.cb_get_config)
 
     def cb_get_config(self, config):
         "callback for on show_prefs"
-        self.glade.get_widget("txt_test").set_text(config["test"])
+        pass
