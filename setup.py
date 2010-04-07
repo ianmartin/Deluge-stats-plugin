@@ -39,7 +39,7 @@ from setuptools import setup
 __plugin_name__ = "Stats"
 __author__ = "Ian Martin"
 __author_email__ = "ianmartin@cantab.net"
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 __url__ = "http://deluge-torrent.org"
 __license__ = "GPLv3"
 __description__ = "Display stats graphs"
